@@ -26,25 +26,26 @@ public class RoleController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<RoleDTO>> createRole(@RequestBody RoleDTO request) {
-        return ResponseEntity.ok(ApiResponse.success("Role created", roleService.createRole(request)));
+        RoleDTO created = roleService.createRole(request);
+        return ResponseEntity.ok(ApiResponse.success("Rôle créé avec succès", created));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<RoleDTO>> updateRole(@PathVariable Integer id,
                                                            @RequestBody RoleDTO request) {
-        return ResponseEntity.ok(ApiResponse.success("Role updated", roleService.updateRole(id, request)));
+        return ResponseEntity.ok(ApiResponse.success("Rôle mis à jour", roleService.updateRole(id, request)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteRole(@PathVariable Integer id) {
         roleService.deleteRole(id);
-        return ResponseEntity.ok(ApiResponse.success("Role deleted", null));
+        return ResponseEntity.ok(ApiResponse.success("Rôle supprimé", null));
     }
 
     @PostMapping("/assign-menus")
     public ResponseEntity<ApiResponse<Void>> assignMenus(@RequestBody RoleMenuRequest request) {
         roleService.assignMenusToRole(request);
-        return ResponseEntity.ok(ApiResponse.success("Menus assigned to role", null));
+        return ResponseEntity.ok(ApiResponse.success("Menus assignés au rôle", null));
     }
 
     @GetMapping("/{id}/menus")

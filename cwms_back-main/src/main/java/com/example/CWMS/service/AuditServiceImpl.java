@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -31,30 +32,41 @@ public class AuditServiceImpl implements AuditService {
     private final UserRepository     userRepository;
     private final ObjectMapper       objectMapper;
 
-    // ── CONNEXIONS ────────────────────────────────────────────
+    // ── CONNEXIONS ────────────────────────────────────────────────────────────
 
+    /**
+     * Variante standard — utilisée pour les échecs (user peut ne pas exister).
+     */
+    @Async("auditExecutor")
     @Override
     public void logLogin(String username, String ip, String userAgent,
                          boolean success, String sessionId) {
-        User user = userRepository.findByUsername(username).orElse(null);
-
-        save(AuditLog.builder()
-                .eventType (success ? EventType.LOGIN : EventType.LOGIN_FAILED)
-                .severity  (success ? Severity.INFO   : Severity.WARNING)
-                .action    (success ? "CONNEXION_OK"  : "TENTATIVE_ECHOUEE")
-                .user      (user)
-                .username  (username)
-                .ipAddress (ip)
-                .userAgent (userAgent)
-                .sessionId (sessionId)
-                .statusCode(success ? 200 : 401)
-                .build());
+        User user = userRepository.findByUsernameWithRoleAndSite(username).orElse(null);
+        persistLogin(user, username, ip, userAgent, success, sessionId);
     }
 
+    /**
+     * Variante optimisée — appelée par AuthServiceImpl après succès.
+     * L'entité User est déjà chargée : ZÉRO requête SQL supplémentaire.
+     * Le thread async reçoit la référence détachée — Hibernate ne
+     * recharge pas une entité détachée si on ne touche qu'à ses champs
+     * déjà initialisés (username, userId).
+     */
+    @Async("auditExecutor")
+    @Override
+    public void logLoginWithUser(User user, String ip, String userAgent,
+                                 boolean success, String sessionId) {
+        persistLogin(
+                user,
+                user != null ? user.getUsername() : "unknown",
+                ip, userAgent, success, sessionId
+        );
+    }
+
+    @Async("auditExecutor")
     @Override
     public void logLogout(String username, String ip, String sessionId) {
-        User user = userRepository.findByUsername(username).orElse(null);
-
+        User user = userRepository.findByUsernameWithRoleAndSite(username).orElse(null);
         save(AuditLog.builder()
                 .eventType(EventType.LOGOUT)
                 .severity (Severity.INFO)
@@ -66,8 +78,9 @@ public class AuditServiceImpl implements AuditService {
                 .build());
     }
 
-    // ── ACTIONS CRITIQUES ─────────────────────────────────────
+    // ── ACTIONS CRUD ──────────────────────────────────────────────────────────
 
+    @Async("auditExecutor")
     @Override
     public void logAction(String action, String entityType, String entityId,
                           Object oldObj, Object newObj) {
@@ -81,21 +94,18 @@ public class AuditServiceImpl implements AuditService {
                     .oldValue     (toJson(oldObj))
                     .newValue     (toJson(newObj))
                     .correlationId(UUID.randomUUID().toString());
-
             enrichWithCurrentUser(builder);
             save(builder.build());
-
         } catch (Exception e) {
             log.error("Erreur log action: {}", e.getMessage());
         }
     }
 
-    /**
-     * ✅ Variante de logAction qui accepte un username en snapshot.
-     * Utile après suppression d'un user (on ne peut plus faire findByUsername).
-     */
-    public void logActionWithUsername(String action, String entityType, String entityId,
-                                      String snapshotUsername, Object oldObj, Object newObj) {
+    @Async("auditExecutor")
+    @Override
+    public void logActionWithUsername(String action, String entityType,
+                                      String entityId, String snapshotUsername,
+                                      Object oldObj, Object newObj) {
         try {
             AuditLog.AuditLogBuilder builder = AuditLog.builder()
                     .eventType    (resolveEventType(action))
@@ -103,25 +113,18 @@ public class AuditServiceImpl implements AuditService {
                     .action       (action)
                     .entityType   (entityType)
                     .entityId     (entityId)
-                    .username     (snapshotUsername)   // snapshot dénormalisé
+                    .username     (snapshotUsername)
                     .oldValue     (toJson(oldObj))
                     .newValue     (toJson(newObj))
                     .correlationId(UUID.randomUUID().toString());
-
-            // On enrichit avec l'admin qui effectue l'action (pas le user supprimé)
             enrichWithCurrentUser(builder);
             save(builder.build());
-
         } catch (Exception e) {
             log.error("Erreur logActionWithUsername: {}", e.getMessage());
         }
     }
 
-    /**
-     * ✅ Log une tentative de création échouée (email doublon, username doublon...).
-     * S'exécute dans une transaction SÉPARÉE pour ne pas être rollbacké
-     * avec la transaction principale qui échoue.
-     */
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logFailedCreation(String targetValue, String reason, String details) {
         try {
@@ -134,17 +137,14 @@ public class AuditServiceImpl implements AuditService {
                     .errorMessage (details)
                     .oldValue     (reason)
                     .correlationId(UUID.randomUUID().toString());
-
             enrichWithCurrentUser(builder);
             save(builder.build());
-
         } catch (Exception e) {
             log.error("Erreur logFailedCreation: {}", e.getMessage());
         }
     }
 
-    // ── ERREURS ───────────────────────────────────────────────
-
+    @Async("auditExecutor")
     @Override
     public void logError(Exception ex, HttpServletRequest request, int statusCode) {
         AuditLog.AuditLogBuilder builder = AuditLog.builder()
@@ -156,11 +156,11 @@ public class AuditServiceImpl implements AuditService {
                 .statusCode  (statusCode)
                 .errorMessage(ex.getMessage())
                 .stackTrace  (truncateStackTrace(ex));
-
         enrichWithCurrentUser(builder);
         save(builder.build());
     }
 
+    @Async("auditExecutor")
     @Override
     public void logHttpError(HttpServletRequest request, int statusCode, long durationMs) {
         AuditLog.AuditLogBuilder builder = AuditLog.builder()
@@ -171,28 +171,39 @@ public class AuditServiceImpl implements AuditService {
                 .endpoint  (request.getRequestURI())
                 .statusCode(statusCode)
                 .durationMs(durationMs);
-
         enrichWithCurrentUser(builder);
         save(builder.build());
     }
 
-    // ── UTILITAIRES ───────────────────────────────────────────
+    // ── UTILITAIRES ───────────────────────────────────────────────────────────
 
     @Override
     public void enrichWithCurrentUser(AuditLog.AuditLogBuilder builder) {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated()
-                    && !"anonymousUser".equals(auth.getPrincipal())) {
-                String username = auth.getName();
-                builder.username(username);
-                // ✅ Vérification id non null pour éviter le crash session Hibernate
-                userRepository.findByUsername(username).ifPresent(u -> {
-                    if (u.getUserId() != null) {
-                        builder.user(u);
-                    }
-                });
+            if (auth == null || !auth.isAuthenticated()
+                    || "anonymousUser".equals(auth.getPrincipal())) return;
+
+            /*
+             * Avec le nouveau JwtFilter, auth.getPrincipal() est une String
+             * (le username extrait du token), pas un UserDetails.
+             * On supporte les deux cas pour la rétrocompatibilité.
+             */
+            String username;
+            Object principal = auth.getPrincipal();
+            if (principal instanceof String s) {
+                username = s;
+            } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
+                username = ud.getUsername();
+            } else {
+                username = auth.getName();
             }
+
+            builder.username(username);
+            userRepository.findByUsernameWithRoleAndSite(username)
+                    .filter(u -> u.getUserId() != null)
+                    .ifPresent(builder::user);
+
         } catch (Exception e) {
             log.warn("enrichWithCurrentUser ignoré: {}", e.getMessage());
         }
@@ -203,21 +214,18 @@ public class AuditServiceImpl implements AuditService {
     public void save(AuditLog auditLog) {
         try {
             AuditLog saved = auditLogRepository.save(auditLog);
-            log.info("✅ Audit — id={} type={} user={}",
+            log.info("Audit — id={} type={} user={}",
                     saved.getId(), saved.getEventType(), saved.getUsername());
         } catch (Exception e) {
-            log.error("❌ Erreur sauvegarde audit: {}", e.getMessage(), e);
+            log.error("Erreur sauvegarde audit: {}", e.getMessage(), e);
         }
     }
 
     @Override
     public String toJson(Object obj) {
         if (obj == null) return null;
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (JsonProcessingException e) {
-            return obj.toString();
-        }
+        try { return objectMapper.writeValueAsString(obj); }
+        catch (JsonProcessingException e) { return obj.toString(); }
     }
 
     @Override
@@ -243,5 +251,22 @@ public class AuditServiceImpl implements AuditService {
         ex.printStackTrace(new PrintWriter(sw));
         String t = sw.toString();
         return t.length() > 4000 ? t.substring(0, 4000) + "..." : t;
+    }
+
+    // ── Privé ─────────────────────────────────────────────────────────────────
+
+    private void persistLogin(User user, String username, String ip,
+                              String userAgent, boolean success, String sessionId) {
+        save(AuditLog.builder()
+                .eventType (success ? EventType.LOGIN : EventType.LOGIN_FAILED)
+                .severity  (success ? Severity.INFO   : Severity.WARNING)
+                .action    (success ? "CONNEXION_OK"  : "TENTATIVE_ECHOUEE")
+                .user      (user)
+                .username  (username)
+                .ipAddress (ip)
+                .userAgent (userAgent)
+                .sessionId (sessionId)
+                .statusCode(success ? 200 : 401)
+                .build());
     }
 }

@@ -18,41 +18,70 @@ import java.util.List;
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
-    // ✅ OK : Les méthodes de nommage automatique gèrent très bien le Pageable
-    Page<AuditLog> findByUser(User user, Pageable pageable);
+    /*
+     * ✅ Requête principale avec JOIN FETCH sur user+role+site.
+     * Évite les 2 requêtes lazy (select Users where UserId + select Roles + select Sites)
+     * déclenchées par AuditLogDTO.from() quand log.getUser() est accédé.
+     *
+     * countQuery OBLIGATOIRE avec JOIN FETCH + Pageable sur SQL Server :
+     * Spring Data ne peut pas dériver le COUNT automatiquement depuis
+     * un FETCH JOIN — on le fournit explicitement pour éviter l'erreur
+     * "query specified join fetching but owner of fetched association
+     * was not present in the SELECT list".
+     */
+    @Query(
+            value = """
+            SELECT a FROM AuditLog a
+            LEFT JOIN FETCH a.user u
+            LEFT JOIN FETCH u.role
+            LEFT JOIN FETCH u.site
+            WHERE (:eventType IS NULL OR a.eventType  = :eventType)
+              AND (:severity  IS NULL OR a.severity   = :severity)
+              AND (:userId    IS NULL OR a.user.userId = :userId)
+              AND (:from      IS NULL OR a.createdAt  >= :from)
+              AND (:to        IS NULL OR a.createdAt  <= :to)
+        """,
+            countQuery = """
+            SELECT COUNT(a) FROM AuditLog a
+            WHERE (:eventType IS NULL OR a.eventType  = :eventType)
+              AND (:severity  IS NULL OR a.severity   = :severity)
+              AND (:userId    IS NULL OR a.user.userId = :userId)
+              AND (:from      IS NULL OR a.createdAt  >= :from)
+              AND (:to        IS NULL OR a.createdAt  <= :to)
+        """
+    )
+    Page<AuditLog> searchWithUser(
+            @Param("eventType") EventType     eventType,
+            @Param("severity")  Severity      severity,
+            @Param("userId")    Integer       userId,
+            @Param("from")      LocalDateTime from,
+            @Param("to")        LocalDateTime to,
+            Pageable pageable
+    );
 
-    // ✅ CORRIGÉ : Suppression du ORDER BY (conflit avec Pageable sur SQL Server)
-    @Query("SELECT a FROM AuditLog a WHERE a.user.userId = :userId")
-    Page<AuditLog> findByUserId(@Param("userId") Integer userId, Pageable pageable);
-
-    // ✅ OK : Ici on peut garder le ORDER BY car on retourne une List (pas de Pageable)
-    @Query("""
-        SELECT a FROM AuditLog a
-        WHERE a.user.userId = :userId
-          AND a.eventType IN ('LOGIN', 'LOGOUT', 'LOGIN_FAILED')
-        ORDER BY a.createdAt DESC
-        """)
-    List<AuditLog> findConnectionsByUserId(@Param("userId") Integer userId);
-
-    // ✅ OK : Requête de comptage simple
-    @Query("""
-        SELECT COUNT(a) FROM AuditLog a
-        WHERE a.username  = :username
-          AND a.eventType = com.example.CWMS.model.AuditLog.EventType.LOGIN_FAILED
-          AND a.createdAt >= :since
-        """)
-    long countRecentFailedLogins(@Param("username") String username,
-                                 @Param("since") LocalDateTime since);
-
-    // ✅ CORRIGÉ : Suppression du ORDER BY final
-    @Query("""
-        SELECT a FROM AuditLog a
-        WHERE (:eventType IS NULL OR a.eventType  = :eventType)
-          AND (:severity  IS NULL OR a.severity   = :severity)
-          AND (:userId    IS NULL OR a.user.userId = :userId)
-          AND (:from      IS NULL OR a.createdAt  >= :from)
-          AND (:to        IS NULL OR a.createdAt  <= :to)
-        """)
+    /*
+     * Conservé pour rétrocompatibilité — utilisé par AuditQueryServiceImpl.search()
+     * si searchWithUser n'est pas encore en place.
+     * À terme : ne garder que searchWithUser.
+     */
+    @Query(
+            value = """
+            SELECT a FROM AuditLog a
+            WHERE (:eventType IS NULL OR a.eventType  = :eventType)
+              AND (:severity  IS NULL OR a.severity   = :severity)
+              AND (:userId    IS NULL OR a.user.userId = :userId)
+              AND (:from      IS NULL OR a.createdAt  >= :from)
+              AND (:to        IS NULL OR a.createdAt  <= :to)
+        """,
+            countQuery = """
+            SELECT COUNT(a) FROM AuditLog a
+            WHERE (:eventType IS NULL OR a.eventType  = :eventType)
+              AND (:severity  IS NULL OR a.severity   = :severity)
+              AND (:userId    IS NULL OR a.user.userId = :userId)
+              AND (:from      IS NULL OR a.createdAt  >= :from)
+              AND (:to        IS NULL OR a.createdAt  <= :to)
+        """
+    )
     Page<AuditLog> search(
             @Param("eventType") EventType     eventType,
             @Param("severity")  Severity      severity,
@@ -61,7 +90,26 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
             @Param("to")        LocalDateTime to,
             Pageable pageable
     );
-    // ✅ Pour delete forcé : supprime tous les logs d'un user
+
+    Page<AuditLog> findByUser(User user, Pageable pageable);
+
+    @Query("""
+        SELECT a FROM AuditLog a
+        WHERE a.user.userId = :userId
+          AND a.eventType IN ('LOGIN', 'LOGOUT', 'LOGIN_FAILED')
+        ORDER BY a.createdAt DESC
+    """)
+    List<AuditLog> findConnectionsByUserId(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT COUNT(a) FROM AuditLog a
+        WHERE a.username  = :username
+          AND a.eventType = com.example.CWMS.model.AuditLog.EventType.LOGIN_FAILED
+          AND a.createdAt >= :since
+    """)
+    long countRecentFailedLogins(@Param("username") String username,
+                                 @Param("since") LocalDateTime since);
+
     @Modifying
     @Query("DELETE FROM AuditLog a WHERE a.user.userId = :userId")
     void deleteAllByUserId(@Param("userId") Integer userId);

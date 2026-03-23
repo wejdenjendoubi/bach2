@@ -1,52 +1,75 @@
 package com.example.CWMS.service;
 
 import com.example.CWMS.iservice.LoginAttemptService;
+import com.example.CWMS.model.User;
 import com.example.CWMS.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 
 @Service
-@Transactional
+@RequiredArgsConstructor
 public class LoginAttemptServiceImpl implements LoginAttemptService {
+
     public static final int MAX_ATTEMPTS = 3;
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
 
-    public void loginSucceeded(String username) {
-        userRepository.findByUsername(username).ifPresent(user -> {
-            user.setFailedAttempts(0);
-            user.setAccountNonLocked(true);
-            user.setLockTime(null);
-            userRepository.save(user);
-        });
+    /**
+     * Reçoit l'entité User déjà chargée par AuthServiceImpl.
+     * ZÉRO requête SQL supplémentaire.
+     */
+    @Override
+    @Transactional
+    public void loginSucceeded(User user) {
+        user.setFailedAttempts(0);
+        user.setAccountNonLocked(true);
+        user.setLockTime(null);
+        userRepository.save(user);
     }
 
-    public void loginFailed(String username) {
-        userRepository.findByUsername(username).ifPresent(user -> {
-            int newAttempts = (user.getFailedAttempts() != null ? user.getFailedAttempts() : 0) + 1;
-            user.setFailedAttempts(newAttempts);
+    /**
+     * Reçoit l'entité User déjà chargée par AuthServiceImpl.
+     * ZÉRO requête SQL supplémentaire.
+     */
+    @Override
+    @Transactional
+    public void loginFailed(User user) {
+        int attempts = user.getFailedAttempts() != null
+                ? user.getFailedAttempts() : 0;
+        int newAttempts = attempts + 1;
+        user.setFailedAttempts(newAttempts);
 
-            if (newAttempts >= MAX_ATTEMPTS) {
-                user.setAccountNonLocked(false);
-                user.setLockTime(LocalDateTime.now());
-                user.setIsActive(false); // On désactive pour forcer l'intervention admin
-            }
-            userRepository.save(user);
-        });
+        if (newAttempts >= MAX_ATTEMPTS) {
+            user.setAccountNonLocked(false);
+            user.setLockTime(LocalDateTime.now());
+            user.setIsActive(false);
+        }
+        userRepository.save(user);
     }
 
+    /**
+     * Appelée AVANT que l'entité User soit chargée dans AuthServiceImpl.
+     * 1 requête SQL inévitable ici — c'est la seule acceptable avant auth.
+     */
+    @Override
     public boolean isBlocked(String username) {
-        return userRepository.findByUsername(username)
-                .map(user -> !user.getAccountNonLocked() || !user.getIsActive())
+        return userRepository.findByUsernameWithRoleAndSite(username)
+                .map(u -> Boolean.FALSE.equals(u.getAccountNonLocked())
+                        || Boolean.FALSE.equals(u.getIsActive()))
                 .orElse(false);
     }
 
+    @Override
     public int getRemainingAttempts(String username) {
-        return userRepository.findByUsername(username)
-                .map(user -> Math.max(0, MAX_ATTEMPTS - (user.getFailedAttempts() != null ? user.getFailedAttempts() : 0)))
+        return userRepository.findByUsernameWithRoleAndSite(username)
+                .map(u -> {
+                    int attempts = u.getFailedAttempts() != null
+                            ? u.getFailedAttempts() : 0;
+                    return Math.max(0, MAX_ATTEMPTS - attempts);
+                })
                 .orElse(MAX_ATTEMPTS);
     }
 }

@@ -4,20 +4,29 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
+import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
 
-    @Autowired private JwtUtils jwtUtils;
-    @Autowired private UserDetailsService userDetailsService;
+    private static final Logger log = LoggerFactory.getLogger(JwtFilter.class);
+
+    private final JwtUtils jwtUtils;
+    /*
+     * UserDetailsService supprimé des dépendances de JwtFilter.
+     * Il n'est plus utilisé ici — les authorities viennent du token.
+     */
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -30,33 +39,43 @@ public class JwtFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String headerAuth = request.getHeader("Authorization");
+        final String header = request.getHeader("Authorization");
 
-        System.out.println("=== JwtFilter === " + request.getMethod() + " " + request.getRequestURI());
-        System.out.println("Authorization header: " + (headerAuth != null ? "présent" : "ABSENT"));
+        if (header != null && header.startsWith("Bearer ")) {
+            final String jwt = header.substring(7);
 
-        if (headerAuth != null && headerAuth.startsWith("Bearer ")) {
-            String jwt = headerAuth.substring(7);
-            boolean valid = jwtUtils.validateJwtToken(jwt);
-            System.out.println("Token valide: " + valid);
-
-            if (valid) {
+            if (jwtUtils.validateJwtToken(jwt)) {
+                /*
+                 * ✅ ZÉRO REQUÊTE SQL ICI.
+                 *
+                 * Avant : loadUserByUsername(username) → SELECT Users JOIN Roles JOIN Sites
+                 * Après : extraction directe depuis les claims JWT signés
+                 *
+                 * Sécurité : le token est signé avec HMAC-SHA512 (clé 64+ chars).
+                 * Les authorities dans le token sont intègres — impossibles à falsifier
+                 * sans connaître la clé secrète.
+                 *
+                 * La vérification de compte désactivé/bloqué est faite au login.
+                 * Entre deux logins, si un admin désactive un compte, le token
+                 * reste valide jusqu'à expiration (24h) — comportement standard
+                 * JWT stateless. Pour invalider immédiatement : implémenter
+                 * une blacklist Redis (hors scope de cette correction).
+                 */
                 String username = jwtUtils.getUserNameFromJwtToken(jwt);
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-
-                System.out.println("✅ Username: " + username);
-                System.out.println("✅ Authorities: " + userDetails.getAuthorities());
+                List<SimpleGrantedAuthority> authorities =
+                        jwtUtils.getAuthoritiesFromJwtToken(jwt);
 
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
+                                username, null, authorities);
+
                 SecurityContextHolder.getContext().setAuthentication(auth);
-                System.out.println("✅ Auth set dans SecurityContext");
+                log.debug("JWT authentifié : {} | authorities : {}",
+                        username, authorities);
             } else {
-                System.out.println("❌ Token invalide ou expiré");
+                log.warn("JWT invalide : {} {}", request.getMethod(),
+                        request.getRequestURI());
             }
-        } else {
-            System.out.println("❌ Pas de Bearer token dans la requête");
         }
 
         filterChain.doFilter(request, response);

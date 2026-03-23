@@ -28,7 +28,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<UserDTO> getAllUsers() {
-        return userRepository.findAll().stream()
+        /*
+         * findAllWithRoleAndSite : 1 requête JOIN FETCH
+         * au lieu de findAll() → N requêtes lazy Role + N requêtes lazy Site.
+         */
+        return userRepository.findAllWithRoleAndSite().stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }

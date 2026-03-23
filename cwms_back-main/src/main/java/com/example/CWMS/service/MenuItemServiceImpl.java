@@ -26,8 +26,11 @@ public class MenuItemServiceImpl implements MenuItemService {
     private final RoleRepository roleRepository;
 
     public List<MenuItemDTO> getMenuItemsForCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userRepository.findByUsername(email)
+        String username = SecurityContextHolder.getContext()
+                .getAuthentication().getName();
+
+        // ✅ JOIN FETCH : 1 requête au lieu de 3 (user + lazy role + lazy site)
+        User user = userRepository.findByUsernameWithRoleAndSite(username)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
         return menuItemRepository.findMenuItemsByRoleId(user.getRole().getRoleId())

@@ -13,6 +13,33 @@ import java.util.Optional;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Integer> {
+
+    /**
+     * Requête principale utilisée partout dans le flux login.
+     * 1 seule requête SQL avec LEFT JOIN FETCH sur Role et Site.
+     * Élimine les lazy loads séparés select Roles + select Sites.
+     */
+    @Query("""
+        SELECT u FROM User u
+        LEFT JOIN FETCH u.role
+        LEFT JOIN FETCH u.site
+        WHERE u.username = :username
+    """)
+    Optional<User> findByUsernameWithRoleAndSite(@Param("username") String username);
+
+    /**
+     * Charge tous les users avec Role et Site en 1 requête.
+     * Remplace findAll() dans UserServiceImpl.getAllUsers().
+     */
+    @Query("""
+        SELECT u FROM User u
+        LEFT JOIN FETCH u.role
+        LEFT JOIN FETCH u.site
+    """)
+    List<User> findAllWithRoleAndSite();
+
+    // ── Méthodes standards conservées ────────────────────────────────────────
+
     Optional<User> findByUsername(String username);
     Optional<User> findByEmail(String email);
     boolean existsByUsername(String username);
@@ -22,14 +49,13 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     @Query("SELECT u FROM User u WHERE u.role.roleId = :roleId")
     List<User> findByRoleId(Integer roleId);
 
-
     @Query("UPDATE User u SET u.failedAttempts = ?2 WHERE u.username = ?1")
     @Modifying
     @Transactional
     void updateFailedAttempts(String username, int failAttempts);
 
-    // ✅ Pour delete normal : on met user_id à NULL dans audit_logs avant de supprimer
     @Modifying
-    @Query(value = "UPDATE audit_logs SET user_id = NULL WHERE user_id = :userId", nativeQuery = true)
+    @Query(value = "UPDATE audit_logs SET user_id = NULL WHERE user_id = :userId",
+            nativeQuery = true)
     void detachAuditLogs(@Param("userId") Integer userId);
 }
