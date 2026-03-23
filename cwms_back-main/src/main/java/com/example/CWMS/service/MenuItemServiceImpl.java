@@ -1,14 +1,16 @@
 package com.example.CWMS.service;
 
 import com.example.CWMS.audit.Auditable;
+import com.example.CWMS.db1.entities.Role;
+import com.example.CWMS.db1.entities.RoleMenuMapping;
 import com.example.CWMS.dto.MenuItemDTO;
 import com.example.CWMS.iservice.MenuItemService;
-import com.example.CWMS.model.MenuItem;
-import com.example.CWMS.model.User;
-import com.example.CWMS.repository.MenuItemRepository;
-import com.example.CWMS.repository.RoleMenuMappingRepository;
-import com.example.CWMS.repository.RoleRepository;
-import com.example.CWMS.repository.UserRepository;
+import com.example.CWMS.db1.entities.MenuItem;
+import com.example.CWMS.db1.entities.User;
+import com.example.CWMS.db1.repositories.MenuItemRepository;
+import com.example.CWMS.db1.repositories.RoleMenuMappingRepository;
+import com.example.CWMS.db1.repositories.RoleRepository;
+import com.example.CWMS.db1.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -119,15 +121,15 @@ public class MenuItemServiceImpl implements MenuItemService {
     public void saveRoleMenuMappings(Integer roleId, List<Integer> menuItemIds) {
         roleMenuMappingRepository.deleteByRoleId(roleId);
 
-        com.example.CWMS.model.Role role = roleRepository.findById(roleId)
+        Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new RuntimeException("Rôle non trouvé"));
 
-        List<com.example.CWMS.model.RoleMenuMapping> mappings = menuItemIds.stream()
+        List<RoleMenuMapping> mappings = menuItemIds.stream()
                 .map(menuId -> {
-                    com.example.CWMS.model.MenuItem menuItem = menuItemRepository.findById(menuId)
+                    MenuItem menuItem = menuItemRepository.findById(menuId)
                             .orElseThrow(() -> new RuntimeException("Menu " + menuId + " non trouvé"));
 
-                    return com.example.CWMS.model.RoleMenuMapping.builder()
+                    return RoleMenuMapping.builder()
                             .role(role)
                             .menuItem(menuItem)
                             .build();

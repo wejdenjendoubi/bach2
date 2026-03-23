@@ -1,7 +1,7 @@
 package com.example.CWMS.iservice;
 
 import com.example.CWMS.dto.UserDTO;
-import com.example.CWMS.model.User;
+import com.example.CWMS.db1.entities.User;
 
 import java.util.List;
 

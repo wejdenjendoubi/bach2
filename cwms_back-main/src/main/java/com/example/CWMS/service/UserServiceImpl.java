@@ -1,10 +1,12 @@
 package com.example.CWMS.service;
 
-import com.example.CWMS.audit.Auditable;
+import com.example.CWMS.db1.entities.User;
+import com.example.CWMS.db1.repositories.AuditLogRepository;
+import com.example.CWMS.db1.repositories.RoleRepository;
+import com.example.CWMS.db1.repositories.SiteRepository;
+import com.example.CWMS.db1.repositories.UserRepository;
 import com.example.CWMS.dto.UserDTO;
 import com.example.CWMS.iservice.UserService;
-import com.example.CWMS.model.*;
-import com.example.CWMS.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,9 +20,9 @@ import java.util.stream.Collectors;
 @Service
 public class UserServiceImpl implements UserService {
 
-    @Autowired private UserRepository     userRepository;
-    @Autowired private RoleRepository     roleRepository;
-    @Autowired private SiteRepository     siteRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private RoleRepository roleRepository;
+    @Autowired private SiteRepository siteRepository;
     @Autowired private AuditLogRepository auditLogRepository;
     @Autowired private BCryptPasswordEncoder passwordEncoder;
     @Autowired private EmailServiceImpl   emailService;

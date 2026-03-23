@@ -1,7 +1,7 @@
 package com.example.CWMS.dto;
 
-import com.example.CWMS.model.AuditLog;
-import com.example.CWMS.model.User;
+import com.example.CWMS.db1.entities.AuditLog;
+import com.example.CWMS.db1.entities.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

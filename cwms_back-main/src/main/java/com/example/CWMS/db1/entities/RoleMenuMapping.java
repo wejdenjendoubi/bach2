@@ -1,4 +1,4 @@
-package com.example.CWMS.model;
+package com.example.CWMS.db1.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;

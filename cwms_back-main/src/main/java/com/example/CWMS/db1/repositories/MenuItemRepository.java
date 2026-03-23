@@ -1,6 +1,6 @@
-package com.example.CWMS.repository;
+package com.example.CWMS.db1.repositories;
 
-import com.example.CWMS.model.MenuItem;
+import com.example.CWMS.db1.entities.MenuItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

@@ -1,8 +1,8 @@
 package com.example.CWMS.service;
 
 import com.example.CWMS.iservice.SiteService;
-import com.example.CWMS.model.Site;
-import com.example.CWMS.repository.SiteRepository;
+import com.example.CWMS.db1.entities.Site;
+import com.example.CWMS.db1.repositories.SiteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

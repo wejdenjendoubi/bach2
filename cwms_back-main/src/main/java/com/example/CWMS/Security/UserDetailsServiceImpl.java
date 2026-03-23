@@ -1,7 +1,7 @@
 package com.example.CWMS.Security;
 
-import com.example.CWMS.model.User;
-import com.example.CWMS.repository.UserRepository;
+import com.example.CWMS.db1.entities.User;
+import com.example.CWMS.db1.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;

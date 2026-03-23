@@ -1,6 +1,6 @@
-package com.example.CWMS.repository;
+package com.example.CWMS.db1.repositories;
 
-import com.example.CWMS.model.RoleMenuMapping;
+import com.example.CWMS.db1.entities.RoleMenuMapping;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -8,8 +8,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Repository
 public interface RoleMenuMappingRepository extends JpaRepository<RoleMenuMapping, Integer> {

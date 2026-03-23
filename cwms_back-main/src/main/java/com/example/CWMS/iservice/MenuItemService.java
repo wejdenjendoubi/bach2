@@ -1,7 +1,7 @@
 package com.example.CWMS.iservice;
 
 import com.example.CWMS.dto.MenuItemDTO;
-import com.example.CWMS.model.MenuItem;
+import com.example.CWMS.db1.entities.MenuItem;
 
 import java.util.List;
 

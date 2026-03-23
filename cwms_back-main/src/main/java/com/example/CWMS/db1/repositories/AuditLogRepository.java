@@ -1,9 +1,9 @@
-package com.example.CWMS.repository;
+package com.example.CWMS.db1.repositories;
 
-import com.example.CWMS.model.AuditLog;
-import com.example.CWMS.model.AuditLog.EventType;
-import com.example.CWMS.model.AuditLog.Severity;
-import com.example.CWMS.model.User;
+import com.example.CWMS.db1.entities.AuditLog;
+import com.example.CWMS.db1.entities.AuditLog.EventType;
+import com.example.CWMS.db1.entities.AuditLog.Severity;
+import com.example.CWMS.db1.entities.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

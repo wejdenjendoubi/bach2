@@ -1,8 +1,8 @@
 package com.example.CWMS.iservice;
 
 import com.example.CWMS.dto.AuditLogDTO;
-import com.example.CWMS.model.AuditLog.EventType;
-import com.example.CWMS.model.AuditLog.Severity;
+import com.example.CWMS.db1.entities.AuditLog.EventType;
+import com.example.CWMS.db1.entities.AuditLog.Severity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
